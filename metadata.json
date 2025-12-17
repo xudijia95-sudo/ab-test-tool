@@ -1,0 +1,5 @@
+{
+  "name": "AI A/B Test Predictor",
+  "description": "An intuitive tool that uses Gemini AI to predict the winner of A/B tests based on conversion rate optimization best practices.",
+  "requestFramePermissions": []
+}
