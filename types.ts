@@ -1,48 +1,47 @@
+
 export enum TestMode {
   TEXT = '文案对比',
   IMAGE = '视觉/图片对比'
 }
 
 export interface VariantData {
+  id: string;
+  label: string; // A, B, C, D
   type: 'text' | 'image';
-  content: string; // Text string or Base64 string
-  mimeType?: string; // e.g., 'image/png'
+  content: string;
+  mimeType?: string;
 }
 
 export interface DetailedScore {
-  score: number; // 0-100
+  score: number;
   comment: string;
 }
 
+export interface VariantAnalysis {
+  label: string;
+  score: number;
+  pros: string[];
+  cons: string[];
+}
+
 export interface AnalysisResult {
-  winner: 'A' | 'B' | 'Tie'; // 获胜者
-  winnerReason: string; // 获胜理由
+  winner: string; // 'A', 'B', 'C', 'D' 或 'Tie'
+  winnerReason: string;
   
-  // Scoring
-  scores: {
-    variantA: number;
-    variantB: number;
-  };
+  // 综合评审
+  designReview: string;
+  
+  // 核心维度（所有方案的平均/综合评价）
+  visualAppeal: DetailedScore;
+  copyPersuasion: DetailedScore;
+  conversionPotential: DetailedScore;
 
-  // Detailed Analysis
-  designReview: string; // AI设计评审
-  visualAppeal: DetailedScore; // 视觉吸引力
-  copyPersuasion: DetailedScore; // 文案说服力
-  conversionPotential: DetailedScore; // 转化潜力
+  // 每个方案的具体分析
+  variantDetails: VariantAnalysis[];
 
-  // Pros & Cons
-  variantAAnalysis: {
-    pros: string[];
-    cons: string[];
-  };
-  variantBAnalysis: {
-    pros: string[];
-    cons: string[];
-  };
-
-  // Optimization
-  variantC: {
-    content: string; // Improved copy or description of improved design
+  // 终极建议
+  optimizedSolution: {
+    content: string;
     explanation: string;
   };
 }
