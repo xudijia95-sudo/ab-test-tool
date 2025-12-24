@@ -1,9 +1,5 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResult, TestMode, VariantData } from "../types";
-
-// 初始化 Google GenAI 客户端
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 /**
  * [核心分析引擎] analyzeDesignABTest
@@ -15,6 +11,8 @@ export const analyzeDesignABTest = async (
   variantA: VariantData,
   variantB: VariantData
 ): Promise<AnalysisResult> => {
+  // 在函数内部初始化，确保在执行上下文环境中安全获取 process.env.API_KEY
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const model = 'gemini-3-flash-preview';
 
   // 处理图片或文字部分的辅助函数
