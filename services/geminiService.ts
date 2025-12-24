@@ -1,184 +1,149 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResult, TestMode, VariantData } from "../types";
 
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
+// 初始化 Google GenAI 客户端
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
+/**
+ * [核心分析引擎] analyzeDesignABTest
+ * 功能：通过 Gemini API 深度对比 A/B 方案，生成极具差异化的专业分析报告
+ */
 export const analyzeDesignABTest = async (
   mode: TestMode,
   context: string,
   variantA: VariantData,
   variantB: VariantData
 ): Promise<AnalysisResult> => {
-  if (!apiKey) {
-    // Mock response for development without API key
-    console.warn("No API Key found. Returning mock data.");
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          winner: 'A',
-          winnerReason: "方案 A 的视觉层级更清晰，用户视线流动更自然，且按钮颜色在此背景下对比度更高。",
-          scores: { variantA: 88, variantB: 75 },
-          designReview: "在当前使用场景下，方案 A 采用了更符合现代审美的极简主义风格，减少了认知负荷。方案 B 虽然信息丰富，但显得略微拥挤。",
-          visualAppeal: { score: 90, comment: "配色和谐，留白处理得当。" },
-          copyPersuasion: { score: 85, comment: "文案直击痛点，使用了强有力的动词。" },
-          conversionPotential: { score: 92, comment: "CTA 按钮位置醒目，引导性强。" },
-          variantAAnalysis: {
-            pros: ["视觉中心明确", "色彩引导性强", "文案简洁"],
-            cons: ["副标题字体略小"]
-          },
-          variantBAnalysis: {
-            pros: ["信息展示全面", "产品细节丰富"],
-            cons: ["视觉杂乱", "CTA 淹没在背景中"]
-          },
-          variantC: {
-            content: "建议结合 A 的布局和 B 的产品细节展示。将 CTA 按钮改为橙色以提升点击率，并放大副标题字号。",
-            explanation: "综合了两者的优点，解决了 A 方案信息量不足和 B 方案视觉混乱的问题。"
-          }
-        });
-      }, 2000);
-    });
-  }
+  const model = 'gemini-3-flash-preview';
+
+  // 处理图片或文字部分的辅助函数
+  const preparePart = (variant: VariantData, label: string) => {
+    if (variant.type === 'image' && variant.content) {
+      const parts = variant.content.split(',');
+      const base64Data = parts.length > 1 ? parts[1] : parts[0];
+      return [
+        { 
+          inlineData: { 
+            data: base64Data, 
+            mimeType: variant.mimeType || 'image/png' 
+          } 
+        },
+        { text: `方案 ${label} 的视觉素材` }
+      ];
+    }
+    return [{ text: `方案 ${label} 文案内容: ${variant.content || '未提供'}` }];
+  };
+
+  const contents = [
+    {
+      parts: [
+        ...preparePart(variantA, "A"),
+        ...preparePart(variantB, "B"),
+        {
+          text: `你是一位顶级的营销策略专家和资深 UI/UX 设计师。请根据以下背景分析这组 A/B 测试方案。
+          
+          测试背景: "${context || '通用营销场景'}"
+          对比模式: ${mode} (注意：如果是文案对比，请聚焦语感、心理暗示和转化诱导；如果是视觉对比，请聚焦视觉层次、品牌感和注意力流向)。
+
+          你的任务：
+          1. 严格对比方案 A 和方案 B 的差异。禁止给出模棱两可或完全相同的评价。
+          2. 必须判定一个明确的获胜者（'A'、'B' 或在两者表现极度接近时判定为 'Tie'）。
+          3. 获胜理由必须直击痛点，说明为什么这个方案更能打动目标用户。
+          4. 为两个方案分别列出独特的优缺点（Pros & Cons），分析必须具有针对性。
+          5. 设计一个“方案 C”，它应该融合两者的优点，或者针对获胜方案的不足进行针对性优化，并给出专业的优化思路。
+          
+          请确保所有返回的文本内容（理由、评论、优缺点）均为中文，且专业、精炼。`
+        }
+      ]
+    }
+  ];
 
   try {
-    const parts: any[] = [];
-
-    // System Instruction / Context
-    parts.push({
-      text: `你是一位世界顶级的设计总监和转化率优化专家（CRO）。
-      你的任务是分析两个设计/文案方案（A/B测试），并给出专业的评审意见。
-      
-      测试类型: ${mode}
-      目标用户/使用场景: ${context || "未指定，请根据内容推断"}
-      
-      请基于设计美学、心理学原理、文案说服力和转化潜力进行深度分析。
-      如果是图片对比，请重点关注构图、色彩、层级、清晰度。
-      如果是文案对比，请重点关注语气、清晰度、痛点共鸣、行动号召。
-      
-      请生成一个“方案 C”，如果是文案测试，直接写出优化后的文案；如果是图片测试，请详细描述优化后的画面设计方案。
-      `
-    });
-
-    // Add Variant A
-    parts.push({ text: "\n--- 方案 A ---\n" });
-    if (variantA.type === 'image' && variantA.mimeType) {
-       // Strip base64 prefix if present for API usage if passing raw bytes, 
-       // but generic inlineData helper usually expects pure base64.
-       const base64Data = variantA.content.split(',')[1]; 
-       parts.push({
-         inlineData: {
-           mimeType: variantA.mimeType,
-           data: base64Data
-         }
-       });
-    } else {
-      parts.push({ text: variantA.content });
-    }
-
-    // Add Variant B
-    parts.push({ text: "\n--- 方案 B ---\n" });
-    if (variantB.type === 'image' && variantB.mimeType) {
-       const base64Data = variantB.content.split(',')[1];
-       parts.push({
-         inlineData: {
-           mimeType: variantB.mimeType,
-           data: base64Data
-         }
-       });
-    } else {
-      parts.push({ text: variantB.content });
-    }
-
-    // Define Schema
-    const responseSchema = {
-      type: Type.OBJECT,
-      properties: {
-        winner: { type: Type.STRING, enum: ["A", "B", "Tie"], description: "获胜方案" },
-        winnerReason: { type: Type.STRING, description: "一句话总结获胜理由" },
-        scores: {
-          type: Type.OBJECT,
-          properties: {
-            variantA: { type: Type.NUMBER, description: "方案A总分 (0-100)" },
-            variantB: { type: Type.NUMBER, description: "方案B总分 (0-100)" }
-          },
-          required: ["variantA", "variantB"]
-        },
-        designReview: { type: Type.STRING, description: "整体AI设计评审意见" },
-        visualAppeal: {
-          type: Type.OBJECT,
-          properties: {
-            score: { type: Type.NUMBER },
-            comment: { type: Type.STRING }
-          },
-          required: ["score", "comment"],
-          description: "视觉吸引力评分及评价"
-        },
-        copyPersuasion: {
-          type: Type.OBJECT,
-          properties: {
-            score: { type: Type.NUMBER },
-            comment: { type: Type.STRING }
-          },
-          required: ["score", "comment"],
-          description: "文案说服力评分及评价"
-        },
-        conversionPotential: {
-          type: Type.OBJECT,
-          properties: {
-            score: { type: Type.NUMBER },
-            comment: { type: Type.STRING }
-          },
-          required: ["score", "comment"],
-          description: "转化潜力评分及评价"
-        },
-        variantAAnalysis: {
-          type: Type.OBJECT,
-          properties: {
-            pros: { type: Type.ARRAY, items: { type: Type.STRING }, description: "方案A优点 (3点)" },
-            cons: { type: Type.ARRAY, items: { type: Type.STRING }, description: "方案A缺点 (3点)" }
-          },
-          required: ["pros", "cons"]
-        },
-        variantBAnalysis: {
-          type: Type.OBJECT,
-          properties: {
-            pros: { type: Type.ARRAY, items: { type: Type.STRING }, description: "方案B优点 (3点)" },
-            cons: { type: Type.ARRAY, items: { type: Type.STRING }, description: "方案B缺点 (3点)" }
-          },
-          required: ["pros", "cons"]
-        },
-        variantC: {
-          type: Type.OBJECT,
-          properties: {
-            content: { type: Type.STRING, description: "生成的优化方案内容（文案或画面描述）" },
-            explanation: { type: Type.STRING, description: "优化思路解释" }
-          },
-          required: ["content", "explanation"]
-        }
-      },
-      required: [
-        "winner", "winnerReason", "scores", "designReview", 
-        "visualAppeal", "copyPersuasion", "conversionPotential", 
-        "variantAAnalysis", "variantBAnalysis", "variantC"
-      ]
-    };
-
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: { parts: parts },
+      model: model,
+      contents: contents,
       config: {
         responseMimeType: "application/json",
-        responseSchema: responseSchema
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            winner: { type: Type.STRING, description: "获胜方案标识，只能是 'A', 'B' 或 'Tie'" },
+            winnerReason: { type: Type.STRING, description: "一句话直击要害的获胜理由" },
+            scores: {
+              type: Type.OBJECT,
+              properties: {
+                variantA: { type: Type.INTEGER, description: "方案 A 的综合评分 (0-100)" },
+                variantB: { type: Type.INTEGER, description: "方案 B 的综合评分 (0-100)" }
+              },
+              required: ["variantA", "variantB"]
+            },
+            designReview: { type: Type.STRING, description: "高水平的设计评审报告，包含用户心理学分析" },
+            visualAppeal: {
+              type: Type.OBJECT,
+              properties: {
+                score: { type: Type.INTEGER, description: "视觉吸引力评分" },
+                comment: { type: Type.STRING, description: "针对视觉表现的专业点评" }
+              },
+              required: ["score", "comment"]
+            },
+            copyPersuasion: {
+              type: Type.OBJECT,
+              properties: {
+                score: { type: Type.INTEGER, description: "文案说服力评分" },
+                comment: { type: Type.STRING, description: "针对文案逻辑和诱导性的点评" }
+              },
+              required: ["score", "comment"]
+            },
+            conversionPotential: {
+              type: Type.OBJECT,
+              properties: {
+                score: { type: Type.INTEGER, description: "转化潜力评分" },
+                comment: { type: Type.STRING, description: "针对转化链路和 CTA 的点评" }
+              },
+              required: ["score", "comment"]
+            },
+            variantAAnalysis: {
+              type: Type.OBJECT,
+              properties: {
+                pros: { type: Type.ARRAY, items: { type: Type.STRING }, description: "方案 A 的独特优势列表" },
+                cons: { type: Type.ARRAY, items: { type: Type.STRING }, description: "方案 A 的明显短板或风险点" }
+              },
+              required: ["pros", "cons"]
+            },
+            variantBAnalysis: {
+              type: Type.OBJECT,
+              properties: {
+                pros: { type: Type.ARRAY, items: { type: Type.STRING }, description: "方案 B 的独特优势列表" },
+                cons: { type: Type.ARRAY, items: { type: Type.STRING }, description: "方案 B 的明显短板或风险点" }
+              },
+              required: ["pros", "cons"]
+            },
+            variantC: {
+              type: Type.OBJECT,
+              properties: {
+                content: { type: Type.STRING, description: "优化后的方案 C 内容或设计详述" },
+                explanation: { type: Type.STRING, description: "为什么要这样优化的战略性解释" }
+              },
+              required: ["content", "explanation"]
+            }
+          },
+          required: [
+            "winner", "winnerReason", "scores", "designReview", 
+            "visualAppeal", "copyPersuasion", "conversionPotential", 
+            "variantAAnalysis", "variantBAnalysis", "variantC"
+          ]
+        }
       }
     });
 
-    const resultText = response.text;
-    if (!resultText) throw new Error("API returned empty response");
-    
-    return JSON.parse(resultText) as AnalysisResult;
+    if (!response.text) {
+      throw new Error("AI 未返回有效的分析数据。");
+    }
 
+    return JSON.parse(response.text.trim());
   } catch (error) {
-    console.error("Analysis failed:", error);
+    console.error("A/B 测试 AI 分析失败:", error);
     throw error;
   }
 };
